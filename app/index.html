@@ -25,12 +25,40 @@
   <script src="js/field.js"></script>
   <script src="js/app.js"></script>
   <script>
+    // Powiadamia o nowej wersji appki zamiast po cichu serwować starą w
+    // nieskończoność (patrz historia — cache-first potrafił "zaklinować"
+    // starą wersję na urządzeniu na dłużej, nawet po redeployu).
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch((err) => {
-          console.warn('Service worker nie zarejestrował się:', err);
-        });
+        navigator.serviceWorker
+          .register('sw.js')
+          .then((reg) => {
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') reg.update();
+            });
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (!newWorker) return;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  showUpdateBanner();
+                }
+              });
+            });
+          })
+          .catch((err) => {
+            console.warn('Service worker nie zarejestrował się:', err);
+          });
       });
+    }
+
+    function showUpdateBanner() {
+      if (document.getElementById('update-banner')) return;
+      const bar = document.createElement('div');
+      bar.id = 'update-banner';
+      bar.innerHTML = '<span>Dostępna nowa wersja appki</span><button id="update-reload">Odśwież</button>';
+      document.getElementById('app').appendChild(bar);
+      document.getElementById('update-reload').onclick = () => location.reload();
     }
   </script>
 </body>

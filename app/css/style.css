@@ -102,6 +102,32 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow-y
 
 #overview-map { flex: 1; min-height: 0; }
 
+/* Zwykły element w kolejności #app (nie fixed) — dzięki temu wsuwa się nad
+   resztą layoutu i ją zsuwa, zamiast nachodzić na sticky header albo FAB. */
+#update-banner {
+  flex: 0 0 auto;
+  order: -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--accent-2);
+  color: #1a1300;
+  padding: 8px 16px;
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  font-size: 13px;
+  font-weight: 600;
+}
+#update-banner button {
+  background: #1a1300;
+  color: var(--accent-2);
+  border: none;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
 .project-group { margin-bottom: 4px; }
 .project-header {
   width: 100%;
