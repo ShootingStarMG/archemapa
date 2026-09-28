@@ -3,7 +3,7 @@
 // bez zasięgu). To nie jest pełne pre-pobieranie kafelków dla całego regionu —
 // tylko to, co realnie zostało wyświetlone, zostaje zapamiętane.
 
-const SHELL_CACHE = 'archemapa-shell-v1';
+const SHELL_CACHE = 'archemapa-shell-v2';
 const TILE_CACHE = 'archemapa-tiles-v1';
 
 const SHELL_FILES = [
@@ -70,19 +70,21 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.startsWith(self.location.origin)) {
+    // Network-first: gdy jest zasięg, appka zawsze bierze najnowszą wersję
+    // plików (i odświeża nimi cache) — inaczej "cache-first" potrafi serwować
+    // starą wersję appki w nieskończoność, dopóki treść sw.js się nie zmieni
+    // (a to jedyny sygnał, po którym przeglądarka w ogóle sprawdza aktualizacje
+    // service workera). Offline: spada na to, co ostatnio zapisane w cache.
     event.respondWith(
-      caches.match(req).then((cached) => {
-        if (cached) return cached;
-        return fetch(req)
-          .then((res) => {
-            if (res.ok) {
-              const clone = res.clone();
-              caches.open(SHELL_CACHE).then((cache) => cache.put(req, clone));
-            }
-            return res;
-          })
-          .catch(() => cached);
-      })
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(SHELL_CACHE).then((cache) => cache.put(req, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
     );
   }
 });
