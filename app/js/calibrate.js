@@ -152,8 +152,10 @@ const Calibrate = {
         </div>
       </div>
       <div class="points-panel" id="points-panel"></div>
-      <div class="toolbar">
+      <div class="toolbar toolbar--form">
         <input type="text" id="name-input" placeholder="Nazwa (np. 1935 Chorzele — mapa topo)" />
+        <input type="text" id="project-input" list="project-list" placeholder="Projekt (opcjonalnie)" />
+        <datalist id="project-list"></datalist>
         <button class="icon" id="btn-undo" title="Usuń ostatni punkt" disabled>↩ cofnij punkt</button>
       </div>
     `;
@@ -161,6 +163,11 @@ const Calibrate = {
       'Kliknij charakterystyczny punkt na starej mapie (np. skrzyżowanie, kościół), potem ten sam punkt na mapie obok.';
 
     state.imageEl = document.getElementById('calib-img');
+
+    KalibracjeDB.getAllKalibracje().then((items) => {
+      const names = [...new Set(items.map((k) => k.project).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pl'));
+      document.getElementById('project-list').innerHTML = names.map((n) => `<option value="${n.replace(/"/g, '&quot;')}"></option>`).join('');
+    });
 
     Calibrate._updateDisplayImage(state); // rotation=0 na start, ustawia dispWidth/Height i skalę "dopasuj"
 
@@ -408,10 +415,12 @@ const Calibrate = {
 
   async _onSave(state) {
     const name = document.getElementById('name-input').value.trim();
+    const project = document.getElementById('project-input').value.trim();
     if (!name || !state.transform) return;
     const record = {
       id: 'k' + Date.now() + Math.random().toString(36).slice(2, 6),
       name,
+      project,
       createdAt: Date.now(),
       imageDataUrl: state.imageDataUrl,
       imageWidth: state.naturalWidth,
