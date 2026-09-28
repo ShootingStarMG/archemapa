@@ -107,6 +107,11 @@ const Calibrate = {
       attribution: '© OpenStreetMap',
     }).addTo(map);
     map.setView([52.0, 20.0], 6);
+    // Leaflet mierzy kontener przy tworzeniu; nasz layout dogrywa się (obrazek,
+    // czcionki) chwilę później, więc bez tego mapa bywa błędnie wyskalowana
+    // (np. wygląda jakby była wyzoomowana na całą Europę).
+    requestAnimationFrame(() => map.invalidateSize());
+    window.addEventListener('resize', () => map.invalidateSize());
     navigator.geolocation?.getCurrentPosition(
       (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], 13),
       () => {},

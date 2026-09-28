@@ -33,6 +33,8 @@ const Field = {
       maxZoom: 19,
       attribution: '© OpenStreetMap',
     }).addTo(map);
+    requestAnimationFrame(() => map.invalidateSize());
+    window.addEventListener('resize', () => map.invalidateSize());
 
     const overlay = L.affineImageOverlay(rec.imageDataUrl, rec.imageWidth, rec.imageHeight, rec.transform, {
       opacity: 0.7,
