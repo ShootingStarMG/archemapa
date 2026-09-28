@@ -1,0 +1,15 @@
+# Duże pliki źródłowe i wynikowe — trzymane lokalnie, nie w git
+dane/zrodlowe/*
+dane/zgeoreferencowane/*
+!dane/zrodlowe/.gitkeep
+!dane/zgeoreferencowane/.gitkeep
+
+# Pliki tymczasowe QGIS
+*.qgz~
+*.qgs~
+*-shm
+*-wal
+.qgis-lock
+
+# System
+.DS_Store
