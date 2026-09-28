@@ -1,52 +1,79 @@
 # archemapa
 
-Narzędzie do georeferencji (kalibracji) starych map i zdjęć lotniczych oraz nakładania ich
-na współczesne mapy. Projekt badawczy/analityczny — nie publikacja online.
+Aplikacja (PWA) do georeferencji (kalibracji) starych map i zdjęć lotniczych oraz
+nakładania ich na współczesne mapy — z użyciem w terenie na telefonie (GPS, offline).
+Projekt badawczy/analityczny na własny użytek, nie publikacja dla szerokiej publiki.
 
-## Stos technologiczny
+## Decyzja architektoniczna
 
-- **QGIS** (Georeferencer) — kalibracja rastrów, wyznaczanie punktów kontrolnych (GCP),
-  transformacje (najczęściej wielomianowa 1–3 stopnia lub TPS przy mocno zniekształconych mapach).
-- **GDAL** — silnik pod spodem (warp, reprojekcja, informacje o rastrach). Dostępny też
-  z linii poleceń (`gdalinfo`, `gdalwarp`, `gdal_translate`) i z Pythona (`osgeo`, `rasterio`).
-- Układ współrzędnych roboczy: **EPSG:2180** (PL-1992, oficjalny polski układ, metryczny,
-  dobry do pomiarów). Do porównań z mapami internetowymi (OSM, Google) używać EPSG:3857/4326
-  na etapie wizualizacji.
+Pierwotnie planowany desktop (QGIS + Georeferencer) — **porzucony**, bo appka musi
+działać na telefonie w terenie. Zamiast tego: **własna aplikacja webowa (PWA)**,
+w pełni frontendowa (bez backendu), przechowuje dane lokalnie na urządzeniu
+(IndexedDB), instalowalna na ekranie głównym telefonu, działa offline po pierwszym
+załadowaniu. Hosting: **GitHub Pages** (repo: sprawdź `git remote -v`).
 
 ## Struktura katalogów
 
 ```
-dane/
-  zrodlowe/            surowe skany/zdjęcia — NIEZMIENIane, punkt wyjścia (poza git, duże pliki)
-  zgeoreferencowane/   wynikowe GeoTIFF po kalibracji (poza git, duże pliki)
-  punkty_kontrolne/    pliki .points z QGIS Georeferencer — W GIT (małe, tekstowe, warto wersjonować)
-qgis/                  projekty QGIS (.qgz)
-dokumentacja/          instrukcje procesu, notatki
-skrypty/               ewentualna automatyzacja (Python/GDAL)
+app/                     aplikacja (PWA) — patrz app/README.md (jeśli powstanie) i niżej
+  index.html
+  manifest.webmanifest   metadane PWA (ikona, nazwa, tryb standalone)
+  sw.js                  service worker — cache appki + kafelków mapy na offline
+  css/style.css
+  js/
+    georef.js            matematyka: dopasowanie afiniczne (piksel obrazu -> EPSG:3857),
+                          bez zależności od Leaflet — do testowania w Node
+    overlay-layer.js      custom warstwa Leaflet renderująca obraz przez CSS matrix()
+                          wg transformacji z georef.js
+    db.js                 wrapper na IndexedDB (zapisane kalibracje)
+    home.js                ekran listy kalibracji
+    calibrate.js            ekran kalibracji (dodawanie punktów kontrolnych)
+    field.js                 ekran terenowy (nałożenie + GPS)
+    app.js                    router (hash-based)
+  vendor/leaflet/          Leaflet 1.9.4 wgrany lokalnie (nie z CDN — appka ma działać
+                            w pełni offline, bez zależności sieciowych w runtime)
+  icons/                    ikony PWA (wygenerowane, do podmiany na docelowe)
+dokumentacja/
+  workflow_georeferencji.md  instrukcja krok po kroku: kalibracja + użycie w terenie
 ```
 
-`dane/zrodlowe/` i `dane/zgeoreferencowane/` są w `.gitignore` — to duże pliki binarne,
-git by się nimi zapchał. W repo śledzimy tylko strukturę, punkty kontrolne i dokumentację.
+`dane/`, `qgis/`, `skrypty/` z pierwszej wersji projektu (podejście QGIS) — nieużywane,
+zostawione na wypadek gdyby ktoś chciał wrócić do desktopowego workflow.
 
-## Konwencja nazewnictwa plików
+## Jak appka liczy georeferencję (dla przyszłych zmian w kodzie)
 
-`RRRR_nazwa-obszaru_typ.rozszerzenie`, np.:
-- `1935_chorzele_mapa-topo.tif` (źródłowy skan)
-- `1935_chorzele_mapa-topo_georef.tif` (po kalibracji)
-- `1935_chorzele_mapa-topo.points` (punkty kontrolne QGIS)
+1. Użytkownik klika parę punktów: piksel na starej mapie (px,py) + punkt na żywej
+   mapie współczesnej (lat,lng).
+2. `georef.js` przelicza lat/lng na metry Web Mercator (EPSG:3857, ten sam układ co
+   Leaflet) i dopasowuje transformację **afiniczną** (6 parametrów: przesunięcie,
+   obrót, skala, ścinanie) metodą najmniejszych kwadratów — min. 3 punkty, więcej =
+   dokładniej. Brak obsługi TPS/wielomianów wyższego stopnia (świadome uproszczenie v1).
+3. `overlay-layer.js` (custom `L.Layer`) przy każdym ruchu/zoomie mapy liczy, gdzie
+   na ekranie wypadają 3 narożniki obrazu, i ustawia `<img>` przez CSS `transform:
+   matrix(...)` — stąd obraz renderuje się poprawnie skręcony/przeskalowany na każdym
+   poziomie zoomu, bez przeliczania pikseli po stronie JS przy każdej klatce.
+4. Kalibracja (obraz jako data URL + punkty + transformacja) zapisywana jest w całości
+   w IndexedDB pod jednym rekordem — stąd offline i bez potrzeby backendu.
 
-Rok = rok powstania oryginału (jeśli nieznany dokładnie, przybliżenie z dopiskiem `ok` np. `1935ok`).
+## Testowanie zmian w kodzie appki
 
-## Workflow kalibracji — patrz [dokumentacja/workflow_georeferencji.md](dokumentacja/workflow_georeferencji.md)
-
-## Kontekst
-
-Projekt powiązany z research'em historycznym wokół Chorzel (por. projekt książkowy "Na nowiu",
-Stella Olgierd) — patrz pamięć Claude z innych projektów. Stare mapy/zdjęcia lotnicze mogą
-dotyczyć tego obszaru, ale narzędzie ma być generyczne, nie ograniczone do jednej lokalizacji.
+- Matematyka (`georef.js`) da się testować gołym Node.js (nie zależy od `window`/DOM
+  poza końcowym `window.Georef = ...`) — patrz przykład w historii sesji: podstawienie
+  `global.window = {}` przed `require()`.
+- Do testów end-to-end w przeglądarce używany był Playwright (headless Chromium) —
+  symulacja: upload pliku, kliknięcia na obrazie/mapie, zapis, otwarcie widoku
+  terenowego, mock geolokalizacji przez `context.geolocation`. Nie ma na stałe
+  skonfigurowanego test runnera w repo — pisz taki skrypt doraźnie w razie potrzeby.
+- Przy zmianach w `overlay-layer.js` warto zrobić zrzut ekranu (Playwright
+  `page.screenshot()`) i sprawdzić wizualnie, czy obraz nakłada się poprawnie
+  (widoczny skos = afiniczna transformacja działa, nie tylko przesunięcie).
 
 ## Zasady pracy
 
-- Nie commitować dużych plików rastrowych (skanów, GeoTIFF) — tylko struktura i punkty kontrolne.
-- Przy niepewności co do georeferencji (brak jasnych punktów odniesienia na starej mapie) —
-  zaznaczać to wprost, nie zgadywać współrzędnych.
+- Appka ma zero zależności backendowych i zero kluczy API — nie dodawaj usług
+  wymagających kluczy/rejestracji bez wyraźnej potrzeby (koliduje z celem
+  "działa offline w terenie za darmo").
+- Leaflet i inne biblioteki wgrywaj lokalnie do `app/vendor/`, nie z CDN — appka ma
+  działać bez internetu w terenie.
+- Przy niepewności co do georeferencji (brak jasnych punktów odniesienia na starej
+  mapie) appka ma to pokazywać wprost (błąd w metrach przy punkcie), nie ukrywać.
