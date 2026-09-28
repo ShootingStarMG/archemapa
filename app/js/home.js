@@ -4,13 +4,13 @@ const Home = {
       <header class="topbar">
         <h1>archemapa</h1>
       </header>
-      <div class="tabs" id="tabs">
-        <button class="tab active" data-tab="projekty">📁 Projekty</button>
-        <button class="tab" data-tab="mapa">🗺 Mapa</button>
-      </div>
-      <div id="home-body" class="home-body">
-        <div id="view-projekty" class="list"></div>
-        <div id="view-mapa" class="overview-map-view" hidden>
+      <div class="split-workspace">
+        <div class="split-pane">
+          <div class="pane-toolbar"><span class="label">Projekty</span></div>
+          <div id="view-projekty" class="list"></div>
+        </div>
+        <div class="split-pane">
+          <div class="pane-toolbar"><span class="label">Mapa — wszystkie punkty</span></div>
           <div id="overview-map"></div>
         </div>
       </div>
@@ -20,22 +20,24 @@ const Home = {
       location.hash = '#/kalibracja/nowa';
     };
 
-    document.querySelectorAll('.tab').forEach((tab) => {
-      tab.onclick = () => Home._switchTab(tab.dataset.tab);
-    });
+    Home._initOverviewMap();
 
     Home._items = await KalibracjeDB.getAllKalibracje();
     Home._renderProjectsView();
-    if (Home._overviewMap) {
-      Home._renderOverviewMarkers();
-    }
+    Home._renderOverviewMarkers();
   },
 
-  _switchTab(name) {
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
-    document.getElementById('view-projekty').hidden = name !== 'projekty';
-    document.getElementById('view-mapa').hidden = name !== 'mapa';
-    if (name === 'mapa') Home._renderMapView();
+  _initOverviewMap() {
+    const map = L.map('overview-map');
+    Home._overviewMap = map;
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap',
+    }).addTo(map);
+    map.setView([52.0, 20.0], 6);
+    Home._overviewLayer = L.layerGroup().addTo(map);
+    requestAnimationFrame(() => map.invalidateSize());
+    window.addEventListener('resize', () => map.invalidateSize());
   },
 
   _renderProjectsView() {
@@ -96,6 +98,7 @@ const Home = {
         <div class="meta">${date} · ${k.controlPoints.length} pkt. kontrolnych</div>
         <div class="row">
           <button class="primary btn-open" data-id="${k.id}">Otwórz w terenie</button>
+          <button class="icon btn-locate" data-id="${k.id}" title="Pokaż na mapie">🎯</button>
           <button class="icon btn-move" data-id="${k.id}" title="Zmień projekt">📁</button>
           <button class="danger icon btn-del" data-id="${k.id}" title="Usuń">✕</button>
         </div>
@@ -129,26 +132,22 @@ const Home = {
         Home._renderProjectsView();
       };
     });
+    scope.querySelectorAll('.btn-locate').forEach((btn) => {
+      btn.onclick = () => Home._focusOnMap(btn.dataset.id);
+    });
   },
 
-  _renderMapView() {
-    if (!Home._overviewMap) {
-      const map = L.map('overview-map');
-      Home._overviewMap = map;
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap',
-      }).addTo(map);
-      map.setView([52.0, 20.0], 6);
-      Home._overviewLayer = L.layerGroup().addTo(map);
-      Home._renderOverviewMarkers();
-    }
-    requestAnimationFrame(() => Home._overviewMap.invalidateSize());
+  _focusOnMap(id) {
+    const marker = Home._markersById?.[id];
+    if (!marker) return;
+    Home._overviewMap.setView(marker.getLatLng(), 15);
+    marker.openPopup();
   },
 
   _renderOverviewMarkers() {
     if (!Home._overviewLayer) return;
     Home._overviewLayer.clearLayers();
+    Home._markersById = {};
     const bounds = [];
     for (const k of Home._items) {
       if (!k.controlPoints || k.controlPoints.length === 0) continue;
@@ -159,6 +158,7 @@ const Home = {
         `<b>${escapeHtml(k.name)}</b><br>${escapeHtml(k.project || 'Bez projektu')}<br><a href="#/teren/${k.id}">Otwórz w terenie →</a>`
       );
       marker.addTo(Home._overviewLayer);
+      Home._markersById[k.id] = marker;
     }
     if (bounds.length > 0) {
       Home._overviewMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });

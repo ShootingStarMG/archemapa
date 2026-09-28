@@ -73,7 +73,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 main { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
 
-.list { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.list { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 
 .card {
   background: var(--panel);
@@ -100,28 +100,7 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow-y
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-.tabs {
-  display: flex;
-  gap: 4px;
-  padding: 8px 16px 0;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-.tab {
-  background: none;
-  border: none;
-  border-radius: var(--radius) var(--radius) 0 0;
-  padding: 10px 16px;
-  color: var(--text-dim);
-  font-weight: 600;
-  font-size: 14px;
-}
-.tab.active { color: var(--text); background: var(--bg); }
-
-.home-body { flex: 1; min-height: 0; position: relative; overflow-y: auto; }
-
-.overview-map-view { position: absolute; inset: 0; }
-#overview-map { position: absolute; inset: 0; }
+#overview-map { flex: 1; min-height: 0; }
 
 .project-group { margin-bottom: 4px; }
 .project-header {
@@ -159,21 +138,21 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow-y
 
 /* Kalibracja: dwie kolumny (stara mapa | mapa współczesna) na szerokich ekranach,
    jedna kolumna (jedno pod drugim) na wąskich/telefonach — patrz media query niżej. */
-.calib-workspace {
+.split-workspace {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: row;
 }
 
-.calib-pane {
+.split-pane {
   flex: 1 1 50%;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.calib-pane + .calib-pane { border-left: 1px solid var(--border); }
+.split-pane + .split-pane { border-left: 1px solid var(--border); }
 
 .pane-toolbar {
   display: flex;
@@ -230,9 +209,9 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow-y
 #field-map { flex: 1 1 60%; min-height: 200px; }
 
 @media (max-width: 780px) {
-  .calib-workspace { flex-direction: column; }
-  .calib-pane { flex-basis: 0; }
-  .calib-pane + .calib-pane { border-left: none; border-top: 1px solid var(--border); }
+  .split-workspace { flex-direction: column; }
+  .split-pane { flex-basis: 0; }
+  .split-pane + .split-pane { border-left: none; border-top: 1px solid var(--border); }
 }
 
 .points-panel {

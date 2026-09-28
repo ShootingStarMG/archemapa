@@ -127,8 +127,8 @@ const Calibrate = {
   _buildWorkspace(state) {
     const main = document.getElementById('calib-main');
     main.innerHTML = `
-      <div class="calib-workspace">
-        <div class="calib-pane">
+      <div class="split-workspace">
+        <div class="split-pane">
           <div class="pane-toolbar">
             <span class="label">Stara mapa</span>
             <button class="icon" id="btn-rotate-left" title="Obróć w lewo o 90°">⟲</button>
@@ -144,7 +144,7 @@ const Calibrate = {
             </div>
           </div>
         </div>
-        <div class="calib-pane">
+        <div class="split-pane">
           <div class="pane-toolbar">
             <span class="label">Mapa współczesna</span>
           </div>
