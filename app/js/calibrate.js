@@ -1,13 +1,79 @@
+// Pomocnicze funkcje do obrotu podglądu starej mapy o wielokrotność 90° w UI
+// kalibracji. WAŻNE: obrót dotyczy wyłącznie WIDOKU w tym ekranie — punkty
+// kontrolne (state.points) zawsze przechowujemy w oryginalnym układzie pikseli
+// obrazu (bez obrotu), więc georef.js / overlay-layer.js / zapis do bazy nie
+// muszą nic wiedzieć o obrocie. Konwersja dzieje się na granicy: klik na
+// obróconym podglądzie -> RotateUtil.toOriginal(...) przed zapisaniem punktu;
+// rysowanie zapisanych punktów -> RotateUtil.toDisplay(...) przed narysowaniem.
+const RotateUtil = {
+  dims(W, H, rotation) {
+    return rotation === 90 || rotation === 270 ? { w: H, h: W } : { w: W, h: H };
+  },
+  toDisplay(px, py, W, H, rotation) {
+    switch (rotation) {
+      case 90:
+        return { x: H - py, y: px };
+      case 180:
+        return { x: W - px, y: H - py };
+      case 270:
+        return { x: py, y: W - px };
+      default:
+        return { x: px, y: py };
+    }
+  },
+  toOriginal(x, y, W, H, rotation) {
+    switch (rotation) {
+      case 90:
+        return { x: y, y: H - x };
+      case 180:
+        return { x: W - x, y: H - y };
+      case 270:
+        return { x: W - y, y: x };
+      default:
+        return { x, y };
+    }
+  },
+  // renderuje obrócony obraz na canvasie i zwraca data URL — patrz komentarz
+  // przy wywołaniu (weryfikacja wzorów w opisie commita/sesji)
+  renderCanvas(imgEl, W, H, rotation) {
+    const dims = RotateUtil.dims(W, H, rotation);
+    const canvas = document.createElement('canvas');
+    canvas.width = dims.w;
+    canvas.height = dims.h;
+    const ctx = canvas.getContext('2d');
+    switch (rotation) {
+      case 90:
+        ctx.translate(dims.w, 0);
+        ctx.rotate(Math.PI / 2);
+        break;
+      case 180:
+        ctx.translate(dims.w, dims.h);
+        ctx.rotate(Math.PI);
+        break;
+      case 270:
+        ctx.translate(0, dims.h);
+        ctx.rotate(-Math.PI / 2);
+        break;
+    }
+    ctx.drawImage(imgEl, 0, 0, W, H);
+    return canvas.toDataURL('image/png');
+  },
+};
+
 const Calibrate = {
   async render(root) {
     const state = {
-      imageDataUrl: null,
-      imageEl: null,
+      imageDataUrl: null, // oryginalny plik — to on trafia do zapisu/nakładki
+      origImageEl: null, // wczytany <img> oryginału, do renderowania obróconego podglądu
       naturalWidth: 0,
       naturalHeight: 0,
-      displayScale: 1, // mnożnik względem naturalWidth
-      points: [], // {id, px, py, lat, lng}
-      pendingImagePoint: null, // {px, py} — czeka na kliknięcie na mapie
+      rotation: 0, // 0/90/180/270 — tylko podgląd w tym ekranie
+      dispWidth: 0,
+      dispHeight: 0, // wymiary aktualnie wyświetlanego (ew. obróconego) podglądu
+      imageEl: null, // <img> podglądu w panelu kalibracji
+      displayScale: 1,
+      points: [], // {id, px, py, lat, lng} — px,py zawsze w oryginalnym układzie
+      pendingImagePoint: null, // {px, py} w oryginalnym układzie — czeka na klik na mapie
       transform: null,
       previewLayer: null,
       calibMap: null,
@@ -48,6 +114,7 @@ const Calibrate = {
       state.imageDataUrl = reader.result;
       const img = new Image();
       img.onload = () => {
+        state.origImageEl = img;
         state.naturalWidth = img.naturalWidth;
         state.naturalHeight = img.naturalHeight;
         Calibrate._buildWorkspace(state);
@@ -60,44 +127,63 @@ const Calibrate = {
   _buildWorkspace(state) {
     const main = document.getElementById('calib-main');
     main.innerHTML = `
-      <div class="calib-image-wrap" id="img-wrap">
-        <img id="calib-img" src="${state.imageDataUrl}" />
-        <div class="points-layer" id="points-layer"></div>
+      <div class="calib-workspace">
+        <div class="calib-pane">
+          <div class="pane-toolbar">
+            <span class="label">Stara mapa</span>
+            <button class="icon" id="btn-rotate-left" title="Obróć w lewo o 90°">⟲</button>
+            <button class="icon" id="btn-rotate-right" title="Obróć w prawo o 90°">⟳</button>
+            <button class="icon" id="btn-zoom-out" title="Pomniejsz">−</button>
+            <button class="icon" id="btn-fit" title="Dopasuj do okna">⤢</button>
+            <button class="icon" id="btn-zoom-in" title="Powiększ">+</button>
+          </div>
+          <div class="calib-image-wrap" id="img-wrap">
+            <div class="img-canvas" id="img-canvas">
+              <img id="calib-img" src="${state.imageDataUrl}" />
+              <div class="points-layer" id="points-layer"></div>
+            </div>
+          </div>
+        </div>
+        <div class="calib-pane">
+          <div class="pane-toolbar">
+            <span class="label">Mapa współczesna</span>
+          </div>
+          <div id="calib-map"></div>
+        </div>
       </div>
-      <div class="toolbar">
-        <button class="icon" id="btn-zoom-out">−</button>
-        <button class="icon" id="btn-zoom-in">+</button>
-        <span class="hint" style="color:var(--text-dim); font-size:12px;">powiększ, by dokładnie kliknąć punkt</span>
-      </div>
-      <div id="calib-map"></div>
       <div class="points-panel" id="points-panel"></div>
       <div class="toolbar">
         <input type="text" id="name-input" placeholder="Nazwa (np. 1935 Chorzele — mapa topo)" />
+        <button class="icon" id="btn-undo" title="Usuń ostatni punkt" disabled>↩ cofnij punkt</button>
       </div>
     `;
     document.getElementById('banner').textContent =
-      'Kliknij charakterystyczny punkt na starej mapie (np. skrzyżowanie, kościół), potem ten sam punkt na mapie poniżej.';
+      'Kliknij charakterystyczny punkt na starej mapie (np. skrzyżowanie, kościół), potem ten sam punkt na mapie obok.';
 
-    const imgEl = document.getElementById('calib-img');
-    state.imageEl = imgEl;
+    state.imageEl = document.getElementById('calib-img');
 
-    // dopasuj początkowy rozmiar do szerokości ekranu
-    const wrapWidth = document.getElementById('img-wrap').clientWidth;
-    state.displayScale = Math.min(1, (wrapWidth || state.naturalWidth) / state.naturalWidth);
-    Calibrate._applyImgScale(state);
+    Calibrate._updateDisplayImage(state); // rotation=0 na start, ustawia dispWidth/Height i skalę "dopasuj"
 
-    document.getElementById('img-wrap').addEventListener('click', (ev) => Calibrate._onImageClick(ev, state));
-    document.getElementById('btn-zoom-in').onclick = () => {
-      state.displayScale = Math.min(state.displayScale * 1.4, 4);
-      Calibrate._applyImgScale(state);
-      Calibrate._redrawImagePoints(state);
-    };
-    document.getElementById('btn-zoom-out').onclick = () => {
-      state.displayScale = Math.max(state.displayScale / 1.4, 0.05);
-      Calibrate._applyImgScale(state);
-      Calibrate._redrawImagePoints(state);
-    };
+    const wrap = document.getElementById('img-wrap');
+    wrap.addEventListener('click', (ev) => Calibrate._onImageClick(ev, state));
+    wrap.addEventListener(
+      'wheel',
+      (ev) => {
+        ev.preventDefault();
+        const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
+        Calibrate._setScale(state, state.displayScale * factor);
+      },
+      { passive: false }
+    );
+
+    document.getElementById('btn-zoom-in').onclick = () => Calibrate._setScale(state, state.displayScale * 1.4);
+    document.getElementById('btn-zoom-out').onclick = () => Calibrate._setScale(state, state.displayScale / 1.4);
+    document.getElementById('btn-fit').onclick = () => Calibrate._setScale(state, Calibrate._fitScale(state));
+    document.getElementById('btn-rotate-left').onclick = () => Calibrate._rotate(state, 270);
+    document.getElementById('btn-rotate-right').onclick = () => Calibrate._rotate(state, 90);
+    document.getElementById('btn-undo').onclick = () => Calibrate._undoLastPoint(state);
     document.getElementById('name-input').addEventListener('input', () => Calibrate._updateSaveEnabled(state));
+    window.addEventListener('resize', () => Calibrate._setScale(state, Calibrate._fitScale(state)));
 
     // mapa współczesna
     const map = L.map('calib-map');
@@ -122,14 +208,52 @@ const Calibrate = {
     document.getElementById('btn-save').onclick = () => Calibrate._onSave(state);
   },
 
+  // Przelicza podgląd (obrócony canvas) dla bieżącej wartości state.rotation,
+  // ustawia go jako src obrazu i dopasowuje skalę do okna.
+  _updateDisplayImage(state) {
+    const dims = RotateUtil.dims(state.naturalWidth, state.naturalHeight, state.rotation);
+    state.dispWidth = dims.w;
+    state.dispHeight = dims.h;
+    state.imageEl.src =
+      state.rotation === 0 ? state.imageDataUrl : RotateUtil.renderCanvas(state.origImageEl, state.naturalWidth, state.naturalHeight, state.rotation);
+    Calibrate._setScale(state, Calibrate._fitScale(state));
+  },
+
+  _rotate(state, deltaDeg) {
+    state.rotation = (state.rotation + deltaDeg) % 360;
+    Calibrate._updateDisplayImage(state);
+  },
+
+  _fitScale(state) {
+    const wrap = document.getElementById('img-wrap');
+    const availW = wrap.clientWidth || state.dispWidth;
+    const availH = wrap.clientHeight || state.dispHeight;
+    if (!state.dispWidth || !state.dispHeight) return 1;
+    return Math.min(availW / state.dispWidth, availH / state.dispHeight);
+  },
+
+  _setScale(state, scale) {
+    state.displayScale = Math.min(Math.max(scale, 0.02), 8);
+    Calibrate._applyImgScale(state);
+    Calibrate._redrawImagePoints(state);
+  },
+
   _applyImgScale(state) {
-    const w = state.naturalWidth * state.displayScale;
-    const h = state.naturalHeight * state.displayScale;
+    const w = state.dispWidth * state.displayScale;
+    const h = state.dispHeight * state.displayScale;
     state.imageEl.style.width = w + 'px';
     state.imageEl.style.height = h + 'px';
     const layer = document.getElementById('points-layer');
     layer.style.width = w + 'px';
     layer.style.height = h + 'px';
+
+    // wyśrodkuj, gdy obraz jest mniejszy niż panel (nie zasłania to przewijania,
+    // gdy jest większy — margin wtedy po prostu wychodzi 0)
+    const wrap = document.getElementById('img-wrap');
+    const canvas = document.getElementById('img-canvas');
+    const mx = Math.max(0, (wrap.clientWidth - w) / 2);
+    const my = Math.max(0, (wrap.clientHeight - h) / 2);
+    canvas.style.margin = `${my}px ${mx}px`;
   },
 
   _onImageClick(ev, state) {
@@ -137,18 +261,17 @@ const Calibrate = {
     const x = ev.clientX - rect.left;
     const y = ev.clientY - rect.top;
     if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
-    const px = (x / rect.width) * state.naturalWidth;
-    const py = (y / rect.height) * state.naturalHeight;
-    state.pendingImagePoint = { px, py };
+    const dx = (x / rect.width) * state.dispWidth;
+    const dy = (y / rect.height) * state.dispHeight;
+    const orig = RotateUtil.toOriginal(dx, dy, state.naturalWidth, state.naturalHeight, state.rotation);
+    state.pendingImagePoint = { px: orig.x, py: orig.y };
     Calibrate._redrawImagePoints(state);
-    document.getElementById('banner').textContent =
-      'Teraz kliknij ten sam punkt na mapie współczesnej poniżej.';
+    document.getElementById('banner').textContent = 'Teraz kliknij ten sam punkt na mapie współczesnej obok.';
   },
 
   _onMapClick(ev, state) {
     if (!state.pendingImagePoint) {
-      document.getElementById('banner').textContent =
-        'Najpierw kliknij punkt na starej mapie powyżej, potem tutaj.';
+      document.getElementById('banner').textContent = 'Najpierw kliknij punkt na starej mapie, potem tutaj.';
       return;
     }
     const id = 'p' + Date.now() + Math.random().toString(36).slice(2, 6);
@@ -171,23 +294,33 @@ const Calibrate = {
     Calibrate._recompute(state);
   },
 
+  _undoLastPoint(state) {
+    const last = state.points[state.points.length - 1];
+    if (!last) return;
+    const marker = state.pointMarkersOnMap[last.id];
+    if (marker) state.calibMap.removeLayer(marker);
+    delete state.pointMarkersOnMap[last.id];
+    state.points = state.points.slice(0, -1);
+    Calibrate._recompute(state);
+  },
+
   _redrawImagePoints(state) {
     const layer = document.getElementById('points-layer');
     const scale = state.displayScale;
-    const all = state.points.map((p, i) => ({ ...p, num: i + 1, pending: false }));
+    const toDisp = (px, py) => RotateUtil.toDisplay(px, py, state.naturalWidth, state.naturalHeight, state.rotation);
+    const all = state.points.map((p, i) => ({ ...toDisp(p.px, p.py), num: i + 1, pending: false }));
     if (state.pendingImagePoint) {
-      all.push({ ...state.pendingImagePoint, num: '?', pending: true });
+      all.push({ ...toDisp(state.pendingImagePoint.px, state.pendingImagePoint.py), num: '?', pending: true });
     }
     layer.innerHTML = all
-      .map(
-        (p) => `<div class="point-marker${p.pending ? ' pending' : ''}" style="left:${p.px * scale}px; top:${p.py * scale}px;">${p.num}</div>`
-      )
+      .map((p) => `<div class="point-marker${p.pending ? ' pending' : ''}" style="left:${p.x * scale}px; top:${p.y * scale}px;">${p.num}</div>`)
       .join('');
   },
 
   _recompute(state) {
     Calibrate._redrawImagePoints(state);
     Calibrate._renderPointsPanel(state);
+    document.getElementById('btn-undo').disabled = state.points.length === 0;
 
     const banner = document.getElementById('banner');
     const n = state.points.length;
@@ -213,7 +346,7 @@ const Calibrate = {
       }
       banner.textContent =
         n === 0
-          ? 'Kliknij charakterystyczny punkt na starej mapie (np. skrzyżowanie, kościół), potem ten sam punkt na mapie poniżej.'
+          ? 'Kliknij charakterystyczny punkt na starej mapie (np. skrzyżowanie, kościół), potem ten sam punkt na mapie obok.'
           : `Dodano ${n} ${n === 1 ? 'punkt' : 'punkty'}. Potrzeba minimum 3 — kliknij kolejny na starej mapie.`;
     }
     Calibrate._updateSaveEnabled(state);
