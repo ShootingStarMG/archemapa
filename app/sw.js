@@ -3,7 +3,7 @@
 // bez zasięgu). To nie jest pełne pre-pobieranie kafelków dla całego regionu —
 // tylko to, co realnie zostało wyświetlone, zostaje zapamiętane.
 
-const SHELL_CACHE = 'archemapa-shell-v3';
+const SHELL_CACHE = 'archemapa-shell-v4';
 const TILE_CACHE = 'archemapa-tiles-v1';
 
 const SHELL_FILES = [
@@ -46,7 +46,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function isTileRequest(url) {
-  return /tile\.openstreetmap\.org/.test(url) || /server\.arcgisonline\.com/.test(url);
+  return /tile\.openstreetmap\.org/.test(url) || /server\.arcgisonline\.com/.test(url) || /mapy\.geoportal\.gov\.pl/.test(url);
 }
 
 self.addEventListener('fetch', (event) => {
