@@ -30,10 +30,7 @@ const Home = {
   _initOverviewMap() {
     const map = L.map('overview-map');
     Home._overviewMap = map;
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap',
-    }).addTo(map);
+    Basemaps.add(map);
     map.setView([52.0, 20.0], 6);
     Home._overviewLayer = L.layerGroup().addTo(map);
     requestAnimationFrame(() => map.invalidateSize());

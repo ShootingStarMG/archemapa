@@ -3,7 +3,7 @@
 // bez zasięgu). To nie jest pełne pre-pobieranie kafelków dla całego regionu —
 // tylko to, co realnie zostało wyświetlone, zostaje zapamiętane.
 
-const SHELL_CACHE = 'archemapa-shell-v2';
+const SHELL_CACHE = 'archemapa-shell-v3';
 const TILE_CACHE = 'archemapa-tiles-v1';
 
 const SHELL_FILES = [
@@ -12,6 +12,7 @@ const SHELL_FILES = [
   './manifest.webmanifest',
   './css/style.css',
   './js/app.js',
+  './js/basemaps.js',
   './js/home.js',
   './js/calibrate.js',
   './js/field.js',
@@ -23,6 +24,8 @@ const SHELL_FILES = [
   './vendor/leaflet/images/marker-icon.png',
   './vendor/leaflet/images/marker-icon-2x.png',
   './vendor/leaflet/images/marker-shadow.png',
+  './vendor/leaflet/images/layers.png',
+  './vendor/leaflet/images/layers-2x.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];
@@ -43,7 +46,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function isTileRequest(url) {
-  return /tile\.openstreetmap\.org/.test(url);
+  return /tile\.openstreetmap\.org/.test(url) || /server\.arcgisonline\.com/.test(url);
 }
 
 self.addEventListener('fetch', (event) => {

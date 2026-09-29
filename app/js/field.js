@@ -29,10 +29,7 @@ const Field = {
     };
 
     const map = L.map('field-map', { zoomControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap',
-    }).addTo(map);
+    Basemaps.add(map);
     requestAnimationFrame(() => map.invalidateSize());
     window.addEventListener('resize', () => map.invalidateSize());
 

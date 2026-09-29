@@ -202,10 +202,7 @@ const Calibrate = {
     // mapa współczesna
     const map = L.map('calib-map');
     state.calibMap = map;
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap',
-    }).addTo(map);
+    Basemaps.add(map);
     map.setView([52.0, 20.0], 6);
     // Leaflet mierzy kontener przy tworzeniu; nasz layout dogrywa się (obrazek,
     // czcionki) chwilę później, więc bez tego mapa bywa błędnie wyskalowana
