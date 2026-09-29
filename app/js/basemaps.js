@@ -42,8 +42,13 @@ const Basemaps = {
     });
 
     const layers = { mapa, satelita, lidar };
-    (layers[options.default] || mapa).addTo(map);
+    let active = layers[options.default] || mapa;
+    active.addTo(map);
     L.control.layers({ Mapa: mapa, Satelita: satelita, 'LIDAR (cieniowanie)': lidar }, null, { position: 'topright' }).addTo(map);
+    map.on('baselayerchange', (e) => {
+      active = e.layer;
+    });
+    layers.getActive = () => active;
     return layers;
   },
 };

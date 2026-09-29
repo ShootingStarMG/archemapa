@@ -146,7 +146,8 @@ const Calibrate = {
         </div>
         <div class="split-pane">
           <div class="pane-toolbar">
-            <span class="label">Mapa współczesna</span>
+            <input type="text" id="search-input" placeholder="Szukaj miejsca…" />
+            <button class="icon" id="search-btn">🔍</button>
           </div>
           <div id="calib-map"></div>
         </div>
@@ -204,6 +205,7 @@ const Calibrate = {
     state.calibMap = map;
     Basemaps.add(map);
     map.setView([52.0, 20.0], 6);
+    GeoSearch.wire(map, document.getElementById('search-input'), document.getElementById('search-btn'));
     // Leaflet mierzy kontener przy tworzeniu; nasz layout dogrywa się (obrazek,
     // czcionki) chwilę później, więc bez tego mapa bywa błędnie wyskalowana
     // (np. wygląda jakby była wyzoomowana na całą Europę).

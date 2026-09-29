@@ -10,7 +10,11 @@ const Home = {
           <div id="view-projekty" class="list"></div>
         </div>
         <div class="split-pane">
-          <div class="pane-toolbar"><span class="label">Mapa — wszystkie punkty</span></div>
+          <div class="pane-toolbar">
+            <input type="text" id="search-input" placeholder="Szukaj miejsca…" />
+            <button class="icon" id="search-btn">🔍</button>
+            <button class="icon" id="btn-offline" title="Zapisz ten widok offline">⬇</button>
+          </div>
           <div id="overview-map"></div>
         </div>
       </div>
@@ -30,11 +34,30 @@ const Home = {
   _initOverviewMap() {
     const map = L.map('overview-map');
     Home._overviewMap = map;
-    Basemaps.add(map);
+    const basemaps = Basemaps.add(map);
     map.setView([52.0, 20.0], 6);
     Home._overviewLayer = L.layerGroup().addTo(map);
     requestAnimationFrame(() => map.invalidateSize());
     window.addEventListener('resize', () => map.invalidateSize());
+
+    GeoSearch.wire(map, document.getElementById('search-input'), document.getElementById('search-btn'));
+
+    const btnOffline = document.getElementById('btn-offline');
+    btnOffline.onclick = async () => {
+      btnOffline.disabled = true;
+      await OfflineDownload.downloadVisible(
+        map,
+        () => basemaps.getActive(),
+        (done, total) => {
+          btnOffline.textContent = total ? `${done}/${total}` : '⬇';
+        }
+      );
+      btnOffline.textContent = '✓';
+      setTimeout(() => {
+        btnOffline.textContent = '⬇';
+        btnOffline.disabled = false;
+      }, 1500);
+    };
   },
 
   _renderProjectsView() {

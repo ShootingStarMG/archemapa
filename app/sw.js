@@ -3,7 +3,7 @@
 // bez zasięgu). To nie jest pełne pre-pobieranie kafelków dla całego regionu —
 // tylko to, co realnie zostało wyświetlone, zostaje zapamiętane.
 
-const SHELL_CACHE = 'archemapa-shell-v4';
+const SHELL_CACHE = 'archemapa-shell-v5';
 const TILE_CACHE = 'archemapa-tiles-v1';
 
 const SHELL_FILES = [
@@ -13,6 +13,9 @@ const SHELL_FILES = [
   './css/style.css',
   './js/app.js',
   './js/basemaps.js',
+  './js/geosearch.js',
+  './js/measure.js',
+  './js/offline-download.js',
   './js/home.js',
   './js/calibrate.js',
   './js/field.js',
