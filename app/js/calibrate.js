@@ -139,7 +139,7 @@ const Calibrate = {
           </div>
           <div class="calib-image-wrap" id="img-wrap">
             <div class="img-canvas" id="img-canvas">
-              <img id="calib-img" src="${state.imageDataUrl}" />
+              <img id="calib-img" src="${state.imageDataUrl}" draggable="false" />
               <div class="points-layer" id="points-layer"></div>
             </div>
           </div>
@@ -172,19 +172,26 @@ const Calibrate = {
     Calibrate._updateDisplayImage(state); // rotation=0 na start, ustawia dispWidth/Height i skalę "dopasuj"
 
     const wrap = document.getElementById('img-wrap');
-    wrap.addEventListener('click', (ev) => Calibrate._onImageClick(ev, state));
+    wrap.addEventListener('click', (ev) => {
+      if (state.suppressNextClick) {
+        state.suppressNextClick = false;
+        return;
+      }
+      Calibrate._onImageClick(ev, state);
+    });
     wrap.addEventListener(
       'wheel',
       (ev) => {
         ev.preventDefault();
         const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
-        Calibrate._setScale(state, state.displayScale * factor);
+        Calibrate._zoomAtPoint(state, state.displayScale * factor, ev.clientX, ev.clientY);
       },
       { passive: false }
     );
+    Calibrate._wireDrag(wrap, state);
 
-    document.getElementById('btn-zoom-in').onclick = () => Calibrate._setScale(state, state.displayScale * 1.4);
-    document.getElementById('btn-zoom-out').onclick = () => Calibrate._setScale(state, state.displayScale / 1.4);
+    document.getElementById('btn-zoom-in').onclick = () => Calibrate._zoomAtCenter(state, state.displayScale * 1.4);
+    document.getElementById('btn-zoom-out').onclick = () => Calibrate._zoomAtCenter(state, state.displayScale / 1.4);
     document.getElementById('btn-fit').onclick = () => Calibrate._setScale(state, Calibrate._fitScale(state));
     document.getElementById('btn-rotate-left').onclick = () => Calibrate._rotate(state, 270);
     document.getElementById('btn-rotate-right').onclick = () => Calibrate._rotate(state, 90);
@@ -243,6 +250,63 @@ const Calibrate = {
     state.displayScale = Math.min(Math.max(scale, 0.02), 8);
     Calibrate._applyImgScale(state);
     Calibrate._redrawImagePoints(state);
+  },
+
+  // Zmienia skalę tak, by punkt obrazu, który był pod kursorem (clientX, clientY),
+  // zostawał pod kursorem także po zmianie — czyli powiększanie "od kursora",
+  // a nie od lewego górnego rogu.
+  _zoomAtPoint(state, newScale, clientX, clientY) {
+    const wrap = document.getElementById('img-wrap');
+    const imgRect = state.imageEl.getBoundingClientRect();
+    const fracX = imgRect.width > 0 ? (clientX - imgRect.left) / imgRect.width : 0.5;
+    const fracY = imgRect.height > 0 ? (clientY - imgRect.top) / imgRect.height : 0.5;
+    const wrapRect = wrap.getBoundingClientRect();
+    const cursorXInWrap = clientX - wrapRect.left;
+    const cursorYInWrap = clientY - wrapRect.top;
+
+    Calibrate._setScale(state, newScale);
+
+    const newW = state.dispWidth * state.displayScale;
+    const newH = state.dispHeight * state.displayScale;
+    const mx = Math.max(0, (wrap.clientWidth - newW) / 2);
+    const my = Math.max(0, (wrap.clientHeight - newH) / 2);
+    wrap.scrollLeft = mx + fracX * newW - cursorXInWrap;
+    wrap.scrollTop = my + fracY * newH - cursorYInWrap;
+  },
+
+  _zoomAtCenter(state, newScale) {
+    const r = document.getElementById('img-wrap').getBoundingClientRect();
+    Calibrate._zoomAtPoint(state, newScale, r.left + r.width / 2, r.top + r.height / 2);
+  },
+
+  // Przeciąganie obrazu kursorem myszy (chwyć i przesuń). Na dotyku zostawiamy
+  // natywne przewijanie przeglądarki (nie łapiemy się w to dla pointerType!=mouse),
+  // żeby nie psuć przewijania palcem.
+  _wireDrag(wrap, state) {
+    let drag = null;
+    wrap.addEventListener('pointerdown', (ev) => {
+      if (ev.pointerType !== 'mouse' || ev.button !== 0) return;
+      drag = { startX: ev.clientX, startY: ev.clientY, scrollLeft: wrap.scrollLeft, scrollTop: wrap.scrollTop, moved: false };
+      wrap.setPointerCapture(ev.pointerId);
+      wrap.classList.add('grabbing');
+    });
+    wrap.addEventListener('pointermove', (ev) => {
+      if (!drag) return;
+      const dx = ev.clientX - drag.startX;
+      const dy = ev.clientY - drag.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
+      wrap.scrollLeft = drag.scrollLeft - dx;
+      wrap.scrollTop = drag.scrollTop - dy;
+    });
+    const endDrag = (ev) => {
+      if (!drag) return;
+      if (drag.moved) state.suppressNextClick = true;
+      wrap.releasePointerCapture(ev.pointerId);
+      wrap.classList.remove('grabbing');
+      drag = null;
+    };
+    wrap.addEventListener('pointerup', endDrag);
+    wrap.addEventListener('pointercancel', endDrag);
   },
 
   _applyImgScale(state) {
