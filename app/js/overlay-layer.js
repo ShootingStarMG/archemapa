@@ -21,6 +21,7 @@ L.AffineImageOverlay = L.Layer.extend({
       img.src = this._url;
       img.width = this._w;
       img.height = this._h;
+      img.draggable = false;
       img.style.position = 'absolute';
       img.style.top = '0';
       img.style.left = '0';
@@ -53,6 +54,19 @@ L.AffineImageOverlay = L.Layer.extend({
   setTransform: function (transform) {
     this._transform = transform;
     this._reset();
+  },
+
+  getTransform: function () {
+    return this._transform;
+  },
+
+  // Włącza/wyłącza możliwość łapania nakładki kursorem — domyślnie
+  // pointer-events:none, żeby nie blokować przeciągania/klikania mapy pod spodem.
+  // Włączane tylko w trybie ręcznej korekty pozycji (patrz field.js).
+  setInteractive: function (interactive) {
+    if (!this._image) return;
+    this._image.style.pointerEvents = interactive ? 'auto' : 'none';
+    this._image.style.cursor = interactive ? 'grab' : '';
   },
 
   _reset: function () {
