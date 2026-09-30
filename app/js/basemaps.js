@@ -1,18 +1,79 @@
 // Wspólne warstwy bazowe (mapa / satelita / LIDAR) dla wszystkich map Leaflet
 // w appce. Esri World Imagery i geoportal.gov.pl nie wymagają kluczy API —
 // pasuje do zasady "appka bez backendu i kluczy API" z CLAUDE.md.
+// Pokazuje mały znacznik "Ładowanie…", dopóki trwają zapytania danej warstwy —
+// bez tego wolno ładujący się LIDAR wygląda jak zawieszony/zepsuty, a nie
+// "po prostu wolny serwer".
+function wireLoadingBadge(map, layer, label) {
+  const badge = L.DomUtil.create('div', 'layer-loading-badge');
+  badge.textContent = `Ładowanie: ${label}…`;
+  badge.hidden = true;
+  map.getContainer().appendChild(badge);
+  let safetyTimer = null;
+  layer.on('loading', () => {
+    badge.hidden = false;
+    // zabezpieczenie: gdyby mimo wszystko żaden kafelek nigdy się nie
+    // rozstrzygnął (nawet po limicie czasu z wireTileRetry), pasek i tak
+    // nie zostanie widoczny w nieskończoność
+    clearTimeout(safetyTimer);
+    safetyTimer = setTimeout(() => {
+      badge.hidden = true;
+    }, 20000);
+  });
+  layer.on('load', () => {
+    badge.hidden = true;
+    clearTimeout(safetyTimer);
+  });
+}
+
 function wireTileRetry(layer, maxRetries = 3, delayMs = 1500) {
   const attempts = new Map();
-  layer.on('tileerror', (err) => {
-    const key = `${err.coords.x}:${err.coords.y}:${err.coords.z}`;
+  const pendingTimers = new Map(); // klucz kafelka -> timer limitu czasu (patrz niżej)
+
+  const TIMEOUT_MS = 10000;
+
+  function keyOf(coords) {
+    return `${coords.x}:${coords.y}:${coords.z}`;
+  }
+  function armWatchdog(coords, tile) {
+    const key = keyOf(coords);
+    clearTimeout(pendingTimers.get(key));
+    pendingTimers.set(
+      key,
+      setTimeout(() => {
+        if (!tile.parentNode || tile.classList.contains('leaflet-tile-loaded')) return;
+        retry(coords, tile);
+      }, TIMEOUT_MS)
+    );
+  }
+  function retry(coords, tile) {
+    const key = keyOf(coords);
     const n = (attempts.get(key) || 0) + 1;
     if (n > maxRetries) return;
     attempts.set(key, n);
     setTimeout(() => {
-      if (!err.tile.parentNode) return; // kafelek już zniknął (np. po przewinięciu mapy)
-      err.tile.src = layer.getTileUrl(err.coords);
+      if (!tile.parentNode) return; // kafelek już zniknął (np. po przewinięciu mapy)
+      tile.src = layer.getTileUrl(coords);
+      // Ręczne przypisanie .src nie odpala ponownie 'tileloadstart' (to
+      // zdarzenie Leaflet emituje tylko przy tworzeniu NOWEGO elementu
+      // kafelka), więc bez ponownego uzbrojenia strażnika kolejne zawieszenie
+      // tej samej próby przeszłoby niezauważone.
+      armWatchdog(coords, tile);
     }, delayMs * n);
+  }
+
+  layer.on('tileerror', (err) => {
+    clearTimeout(pendingTimers.get(keyOf(err.coords)));
+    retry(err.coords, err.tile);
   });
+
+  // Geoportal czasem nie kończy zapytania w ogóle — ani sukcesem, ani błędem
+  // (sprawdzone: kafelek potrafi "wisieć" bez końca) — bez własnego limitu
+  // czasu takie zapytanie nigdy by się nie doczekało ponowienia, a pasek
+  // ładowania zostałby widoczny bez końca (Leaflet czeka na rozstrzygnięcie
+  // WSZYSTKICH kafelków, żeby uznać widok za w pełni załadowany).
+  layer.on('tileloadstart', (e) => armWatchdog(e.coords, e.tile));
+  layer.on('tileload', (e) => clearTimeout(pendingTimers.get(keyOf(e.coords))));
 }
 
 const Basemaps = {
@@ -37,8 +98,10 @@ const Basemaps = {
     // darmowego serwisu rządowego, nie da się tego w pełni obejść. Poniższe
     // ustawienia tylko ograniczają liczbę i częstotliwość zapytań:
     // - tileSize:512 = 4x mniej zapytań dla tego samego obszaru,
-    // - minZoom = nie próbuj renderować całej Polski naraz (i tak dane 1m
-    //   nic by tam nie wniosły),
+    // - minZoom:14 = przy większym oddaleniu trzeba by ładować dużo kafelków
+    //   naraz, a każdy może zająć kilka-kilkanaście sekund — łączny czas
+    //   oczekiwania rośnie z liczbą kafelków w widoku, więc każemy dojść
+    //   bliżej (i tak dane 1m nic by nie wniosły z daleka),
     // - updateWhenZooming:false = nie odpytuj w trakcie animacji zoomu,
     //   tylko po jej zakończeniu.
     const lidar = L.tileLayer.wms('https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WMS/ShadedRelief', {
@@ -47,7 +110,7 @@ const Basemaps = {
       version: '1.3.0',
       crs: L.CRS.EPSG4326,
       tileSize: 512,
-      minZoom: 12,
+      minZoom: 14,
       maxZoom: 18,
       updateWhenZooming: false,
       keepBuffer: 1,
@@ -60,6 +123,7 @@ const Basemaps = {
     // zapytań, więc mapa zostaje z pustymi/szarymi dziurami na stałe. Kilka
     // prób z odstępem naprawia to w praktyce w większości przypadków.
     wireTileRetry(lidar);
+    wireLoadingBadge(map, lidar, 'LIDAR');
 
     const layers = { mapa, satelita, lidar };
     let active = layers[options.default] || mapa;
