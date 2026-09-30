@@ -103,7 +103,14 @@ const Basemaps = {
     //   oczekiwania rośnie z liczbą kafelków w widoku, więc każemy dojść
     //   bliżej (i tak dane 1m nic by nie wniosły z daleka),
     // - updateWhenZooming:false = nie odpytuj w trakcie animacji zoomu,
-    //   tylko po jej zakończeniu.
+    //   tylko po jej zakończeniu,
+    // - updateWhenIdle:true = nie odpytuj też w trakcie samego przeciągania
+    //   mapy, tylko po puszczeniu — inaczej przy wolnym serwerze każdy ruch
+    //   w trakcie przeciągania odpala nowe zapytanie, które i tak zostanie
+    //   porzucone, zanim zdąży odpowiedzieć,
+    // - keepBuffer:6 = trzyma znacznie więcej już wczytanych sąsiednich
+    //   kafelków w pamięci DOM, więc drobne doprecyzowanie widoku nie
+    //   zeruje tego, co już się załadowało.
     const lidar = L.tileLayer.wms('https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WMS/ShadedRelief', {
       layers: 'Raster',
       format: 'image/jpeg',
@@ -113,7 +120,8 @@ const Basemaps = {
       minZoom: 14,
       maxZoom: 18,
       updateWhenZooming: false,
-      keepBuffer: 1,
+      updateWhenIdle: true,
+      keepBuffer: 6,
       bounds: L.latLngBounds([48.88, 13.78], [54.93, 24.76]), // zasięg danych: Polska
       attribution: 'NMT (LIDAR) © GUGiK',
     });
