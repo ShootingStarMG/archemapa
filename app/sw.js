@@ -3,8 +3,8 @@
 // bez zasięgu). To nie jest pełne pre-pobieranie kafelków dla całego regionu —
 // tylko to, co realnie zostało wyświetlone, zostaje zapamiętane.
 
-const SHELL_CACHE = 'archemapa-shell-v5';
-const TILE_CACHE = 'archemapa-tiles-v1';
+const SHELL_CACHE = 'archemapa-shell-v6';
+const TILE_CACHE = 'archemapa-tiles-v2';
 
 const SHELL_FILES = [
   './',
@@ -65,7 +65,15 @@ self.addEventListener('fetch', (event) => {
         if (cached) return cached;
         try {
           const res = await fetch(req);
-          if (res.ok) cache.put(req, res.clone());
+          // WAŻNE: kafelki ładowane przez <img> to zapytania w trybie
+          // no-cors, więc odpowiedź jest "opaque" — zawsze ma res.ok===false
+          // i status 0, NIEZALEŻNIE od tego, czy serwer faktycznie zwrócił
+          // 200. Sprawdzanie res.ok tutaj (jak było wcześniej) oznaczało, że
+          // NIC nigdy się nie zapisywało do cache, mimo że kafelki wyglądały
+          // na poprawnie załadowane na ekranie. fetch() rzuciłby wyjątkiem
+          // (łapiemy go niżej) przy prawdziwej awarii sieci — więc każda
+          // odpowiedź, która tu dotarła, jest bezpieczna do zapisania.
+          cache.put(req, res.clone());
           return res;
         } catch (err) {
           return cached || Response.error();
