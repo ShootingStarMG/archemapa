@@ -6,7 +6,12 @@ const Home = {
       </header>
       <div class="split-workspace">
         <div class="split-pane">
-          <div class="pane-toolbar"><span class="label">Projekty</span></div>
+          <div class="pane-toolbar">
+            <span class="label">Projekty</span>
+            <button class="icon" id="btn-export" title="Eksportuj wszystkie dane do pliku">⬆ Eksport</button>
+            <button class="icon" id="btn-import" title="Wczytaj dane z pliku eksportu">⬇ Import</button>
+            <input type="file" id="import-file" accept="application/json" hidden />
+          </div>
           <div id="view-projekty" class="list"></div>
         </div>
         <div class="split-pane">
@@ -23,12 +28,54 @@ const Home = {
     document.getElementById('btn-new').onclick = () => {
       location.hash = '#/kalibracja/nowa';
     };
+    Home._wireExportImport();
 
     Home._initOverviewMap();
 
     Home._items = await KalibracjeDB.getAllKalibracje();
     Home._renderProjectsView();
     Home._renderOverviewMarkers();
+  },
+
+  // Appka nie ma backendu ani synchronizacji w chmurze (celowo — działa
+  // w pełni lokalnie/offline) — to jedyny sposób na przeniesienie danych
+  // między urządzeniami (np. komputer -> telefon): eksportuj plik, prześlij
+  // go sobie dowolnym kanałem (mail, AirDrop, dysk w chmurze), zaimportuj.
+  _wireExportImport() {
+    document.getElementById('btn-export').onclick = async () => {
+      const [kalibracje, notatki] = await Promise.all([KalibracjeDB.getAllKalibracje(), KalibracjeDB.getAllNotatki()]);
+      const payload = { version: 1, exportedAt: Date.now(), kalibracje, notatki };
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `archemapa-eksport-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+
+    const fileInput = document.getElementById('import-file');
+    document.getElementById('btn-import').onclick = () => fileInput.click();
+    fileInput.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const payload = JSON.parse(await file.text());
+        if (!payload || !Array.isArray(payload.kalibracje)) throw new Error('To nie wygląda na plik eksportu archemapy.');
+        for (const k of payload.kalibracje) await KalibracjeDB.saveKalibracja(k);
+        for (const n of payload.notatki || []) await KalibracjeDB.saveNotatka(n);
+        alert(`Zaimportowano: ${payload.kalibracje.length} kalibracji, ${(payload.notatki || []).length} notatek.`);
+        Home._items = await KalibracjeDB.getAllKalibracje();
+        Home._renderProjectsView();
+        Home._renderOverviewMarkers();
+      } catch (err) {
+        alert('Nie udało się wczytać pliku: ' + err.message);
+      } finally {
+        fileInput.value = '';
+      }
+    };
   },
 
   _initOverviewMap() {
