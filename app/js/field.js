@@ -1,3 +1,12 @@
+const NOTE_CATEGORIES = [
+  { id: 'do-sprawdzenia', label: 'Do sprawdzenia', color: '#ffb84f', icon: '❓' },
+  { id: 'znalezisko', label: 'Znalezisko', color: '#4fd18b', icon: '✓' },
+  { id: 'w-terenie', label: 'Do sprawdzenia w terenie', color: '#4fb3ff', icon: '🚩' },
+];
+function categoryOf(id) {
+  return NOTE_CATEGORIES.find((c) => c.id === id) || NOTE_CATEGORIES[0];
+}
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -44,6 +53,9 @@ const Field = {
       </div>
       <div class="modal-card" id="note-form" hidden>
         <h3>Nowa pinezka</h3>
+        <select id="note-category">
+          ${NOTE_CATEGORIES.map((c) => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('')}
+        </select>
         <textarea id="note-text" placeholder="Co tu znalazłaś?" rows="3"></textarea>
         <input type="file" id="note-photo" accept="image/*" capture="environment" />
         <div class="row">
@@ -241,6 +253,7 @@ const Field = {
     let pendingNoteLatLng = null;
     const btnNote = document.getElementById('btn-note');
     const noteForm = document.getElementById('note-form');
+    const noteCategoryEl = document.getElementById('note-category');
     const noteTextEl = document.getElementById('note-text');
     const notePhotoEl = document.getElementById('note-photo');
 
@@ -250,14 +263,21 @@ const Field = {
     };
 
     function addNoteMarker(note) {
+      const cat = categoryOf(note.category);
       const marker = L.marker([note.lat, note.lng], {
-        icon: L.divIcon({ className: '', html: '<div class="note-marker">📍</div>', iconSize: [26, 26], iconAnchor: [13, 26] }),
+        icon: L.divIcon({
+          className: '',
+          html: `<div class="note-marker" style="background:${cat.color};border-color:${cat.color};" title="${escapeHtml(cat.label)}">${cat.icon}</div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 26],
+        }),
       });
       const photoHtml = note.photoDataUrl
         ? `<img src="${note.photoDataUrl}" style="max-width:180px;display:block;margin-top:6px;border-radius:8px;" />`
         : '';
       marker.bindPopup(
-        `<div>${escapeHtml(note.text || '(bez opisu)')}</div>${photoHtml}<button class="danger icon note-del-btn">Usuń</button>`
+        `<div class="note-popup-category">${cat.icon} ${escapeHtml(cat.label)}</div>` +
+          `<div>${escapeHtml(note.text || '(bez opisu)')}</div>${photoHtml}<button class="danger icon note-del-btn">Usuń</button>`
       );
       marker.on('popupopen', (e) => {
         const btn = e.popup._contentNode.querySelector('.note-del-btn');
@@ -288,6 +308,7 @@ const Field = {
       const note = {
         id: 'n' + Date.now() + Math.random().toString(36).slice(2, 6),
         kalibracjaId: rec.id,
+        category: noteCategoryEl.value,
         lat: pendingNoteLatLng.lat,
         lng: pendingNoteLatLng.lng,
         text: noteTextEl.value.trim(),
