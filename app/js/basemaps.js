@@ -133,10 +133,26 @@ const Basemaps = {
     wireTileRetry(lidar);
     wireLoadingBadge(map, lidar, 'LIDAR');
 
-    const layers = { mapa, satelita, lidar };
+    // Nazwy miejscowości/ulic/obiektów na przezroczystym tle — ten sam
+    // dostawca co Satelita, do nakładania NA Satelitę/LIDAR (żadna z nich
+    // sama w sobie nie ma żadnych podpisów). `zIndex` wyższy niż domyślny
+    // (1) warstw bazowych gwarantuje rysowanie etykiet NAD nimi, niezależnie
+    // od kolejności włączania.
+    const etykiety = L.tileLayer(
+      'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 19, zIndex: 10, attribution: 'Etykiety © Esri' }
+    );
+
+    const layers = { mapa, satelita, lidar, etykiety };
     let active = layers[options.default] || mapa;
     active.addTo(map);
-    L.control.layers({ Mapa: mapa, Satelita: satelita, 'LIDAR (cieniowanie)': lidar }, null, { position: 'topright' }).addTo(map);
+    L.control
+      .layers(
+        { Mapa: mapa, Satelita: satelita, 'LIDAR (cieniowanie)': lidar },
+        { 'Nazwy i etykiety': etykiety },
+        { position: 'topright' }
+      )
+      .addTo(map);
     map.on('baselayerchange', (e) => {
       active = e.layer;
     });
