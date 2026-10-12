@@ -2,6 +2,7 @@ const NOTE_CATEGORIES = [
   { id: 'do-sprawdzenia', label: 'Do sprawdzenia', color: '#ffb84f', icon: '❓' },
   { id: 'znalezisko', label: 'Znalezisko', color: '#4fd18b', icon: '✓' },
   { id: 'w-terenie', label: 'Do sprawdzenia w terenie', color: '#4fb3ff', icon: '🚩' },
+  { id: 'sprawdzone', label: 'Sprawdzone', color: '#9aa2b1', icon: '✔' },
 ];
 function categoryOf(id) {
   return NOTE_CATEGORIES.find((c) => c.id === id) || NOTE_CATEGORIES[0];
@@ -46,6 +47,7 @@ const Field = {
           <button class="icon" id="btn-add-overlay" title="Dodaj kolejną mapę do porównania">🗺+</button>
           <button class="icon" id="btn-measure" title="Zmierz odległość/powierzchnię">📏</button>
           <button class="icon" id="btn-note" title="Dodaj pinezkę z notatką">📍</button>
+          <button class="icon" id="btn-notes-index" title="Lista notatek">📋</button>
           <button class="icon" id="btn-offline" title="Zapisz ten widok offline">⬇</button>
           <button class="icon" id="btn-adjust" title="Przesuń nałożenie ręcznie">✥</button>
           <button class="icon" id="btn-locate" title="Wyśrodkuj na mojej pozycji">◎</button>
@@ -70,6 +72,13 @@ const Field = {
           <button id="overlay-picker-cancel">Anuluj</button>
           <button class="primary" id="overlay-picker-add">Dodaj</button>
         </div>
+      </div>
+      <div class="modal-card wide" id="notes-index" hidden>
+        <div class="modal-card-header">
+          <h3>Notatki</h3>
+          <button class="icon" id="notes-index-close">✕</button>
+        </div>
+        <div id="notes-index-body" class="notes-index-body"></div>
       </div>
     `;
 
@@ -262,34 +271,116 @@ const Field = {
       btnNote.classList.toggle('active', noteMode);
     };
 
-    function addNoteMarker(note) {
-      const cat = categoryOf(note.category);
-      const marker = L.marker([note.lat, note.lng], {
-        icon: L.divIcon({
-          className: '',
-          html: `<div class="note-marker" style="background:${cat.color};border-color:${cat.color};" title="${escapeHtml(cat.label)}">${cat.icon}</div>`,
-          iconSize: [26, 26],
-          iconAnchor: [13, 26],
-        }),
+    const notesById = {}; // id -> { note, marker }
+
+    function noteIcon(cat) {
+      return L.divIcon({
+        className: '',
+        html: `<div class="note-marker" style="background:${cat.color};border-color:${cat.color};" title="${escapeHtml(cat.label)}">${cat.icon}</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 26],
       });
+    }
+
+    function popupHtml(note) {
+      const cat = categoryOf(note.category);
       const photoHtml = note.photoDataUrl
         ? `<img src="${note.photoDataUrl}" style="max-width:180px;display:block;margin-top:6px;border-radius:8px;" />`
         : '';
-      marker.bindPopup(
-        `<div class="note-popup-category">${cat.icon} ${escapeHtml(cat.label)}</div>` +
-          `<div>${escapeHtml(note.text || '(bez opisu)')}</div>${photoHtml}<button class="danger icon note-del-btn">Usuń</button>`
+      const catOptions = NOTE_CATEGORIES.map(
+        (c) => `<option value="${c.id}"${c.id === note.category ? ' selected' : ''}>${c.icon} ${c.label}</option>`
+      ).join('');
+      return (
+        `<select class="note-cat-select">${catOptions}</select>` +
+        `<div>${escapeHtml(note.text || '(bez opisu)')}</div>${photoHtml}<button class="danger icon note-del-btn">Usuń</button>`
       );
+    }
+
+    function addNoteMarker(note) {
+      const marker = L.marker([note.lat, note.lng], { icon: noteIcon(categoryOf(note.category)) });
+      marker.bindPopup(popupHtml(note));
       marker.on('popupopen', (e) => {
-        const btn = e.popup._contentNode.querySelector('.note-del-btn');
-        if (btn)
-          btn.onclick = async () => {
+        const content = e.popup._contentNode;
+        const select = content.querySelector('.note-cat-select');
+        if (select)
+          select.onchange = async () => {
+            note.category = select.value;
+            await KalibracjeDB.saveNotatka(note);
+            marker.setIcon(noteIcon(categoryOf(note.category)));
+            if (!document.getElementById('notes-index').hidden) renderNotesIndex();
+          };
+        const delBtn = content.querySelector('.note-del-btn');
+        if (delBtn)
+          delBtn.onclick = async () => {
             await KalibracjeDB.deleteNotatka(note.id);
             map.removeLayer(marker);
+            delete notesById[note.id];
+            if (!document.getElementById('notes-index').hidden) renderNotesIndex();
           };
       });
       marker.addTo(map);
+      notesById[note.id] = { note, marker };
     }
     (await KalibracjeDB.getNotatkiForKalibracja(rec.id)).forEach(addNoteMarker);
+
+    // --- Indeks notatek (przegląd pogrupowany wg kategorii) ---
+    const notesIndex = document.getElementById('notes-index');
+    const notesIndexBody = document.getElementById('notes-index-body');
+
+    function renderNotesIndex() {
+      const all = Object.values(notesById).map((x) => x.note);
+      if (all.length === 0) {
+        notesIndexBody.innerHTML = `<div class="empty-state">Brak notatek dla tej kalibracji.</div>`;
+        return;
+      }
+      notesIndexBody.innerHTML = NOTE_CATEGORIES.map((cat, gi) => {
+        const items = all.filter((n) => (n.category || NOTE_CATEGORIES[0].id) === cat.id);
+        if (items.length === 0) return '';
+        const rows = items
+          .map(
+            (n) => `
+          <div class="card note-index-row" data-id="${n.id}">
+            <span class="note-index-dot" style="background:${cat.color};"></span>
+            <span class="note-index-text">${escapeHtml(n.text || '(bez opisu)')}</span>
+            <button class="icon note-index-go" data-id="${n.id}">Pokaż</button>
+          </div>`
+          )
+          .join('');
+        return `
+          <div class="project-group">
+            <button class="project-header" data-group="notes-${gi}">
+              <span class="chev">▾</span>
+              <span class="project-name">${cat.icon} ${escapeHtml(cat.label)}</span>
+              <span class="count">${items.length}</span>
+            </button>
+            <div class="project-items" data-group-items="notes-${gi}">${rows}</div>
+          </div>`;
+      }).join('');
+
+      notesIndexBody.querySelectorAll('.project-header').forEach((btn) => {
+        btn.onclick = () => {
+          btn.classList.toggle('collapsed');
+          notesIndexBody.querySelector(`[data-group-items="${btn.dataset.group}"]`).classList.toggle('collapsed');
+        };
+      });
+      notesIndexBody.querySelectorAll('.note-index-go').forEach((btn) => {
+        btn.onclick = () => {
+          const entry = notesById[btn.dataset.id];
+          if (!entry) return;
+          notesIndex.hidden = true;
+          map.setView(entry.marker.getLatLng(), Math.max(map.getZoom(), 17));
+          entry.marker.openPopup();
+        };
+      });
+    }
+
+    document.getElementById('btn-notes-index').onclick = () => {
+      renderNotesIndex();
+      notesIndex.hidden = false;
+    };
+    document.getElementById('notes-index-close').onclick = () => {
+      notesIndex.hidden = true;
+    };
 
     map.on('click', (ev) => {
       if (!noteMode) return;
